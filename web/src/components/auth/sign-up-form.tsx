@@ -14,9 +14,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { registerUser } from "@/lib/api";
 import { useMutation } from "@tanstack/react-query";
 import { SignUpFormSchema, type SignUpType } from "@/types";
+import { auth } from "@/lib/auth/auth";
 
 interface SignUpFormProps {
     setType: React.Dispatch<SetStateAction<"signin" | "signup">>;
@@ -34,15 +34,9 @@ export const SignUpForm = ({ setType }: SignUpFormProps) => {
     });
 
     const { mutate, isPending } = useMutation({
-        mutationFn: registerUser,
-        onSuccess: (data) => {
-            console.log("User registered successfully:", data);
-            setType("signin");
-        },
-        onError: (error) => {
-            console.error("Error registering user:", error);
-            setError("Failed to register. Please try again.");
-        },
+        mutationFn: auth.signUp,
+        onSuccess: () => setType("signin"),
+        onError: () => setError("Failed to register. Please try again."),
     });
 
     const onSubmit = async (values: SignUpType) => {
@@ -106,8 +100,8 @@ export const SignUpForm = ({ setType }: SignUpFormProps) => {
                 />
 
                 { error && (
-                    <div className="text-destructive text-sm text-start flex items-center gap-2">
-                        <RiAlertLine className="size-4" />
+                    <div className="text-destructive text-sm text-start flex items-start gap-2">
+                        <RiAlertLine className="size-3 mt-1" />
                         <span>{error}</span>
                     </div>
                 )}

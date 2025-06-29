@@ -37,12 +37,11 @@ func (pg *PgSessionStore) CreateSession(session *Session) (*Session, error) {
 	}
 	defer tx.Rollback()
 
-	query := `INSERT INTO sessions (id, expires_at, token, ip_address, user_agent, user_id)
-	VALUES ($1, $2, $3, $4, $5, $6)
+	query := `INSERT INTO sessions (expires_at, token, ip_address, user_agent, user_id)
+	VALUES ($1, $2, $3, $4, $5)
 	RETURNING created_at, updated_at`
 	err = tx.
 		QueryRow(query,
-			session.ID,
 			session.ExpiresAt,
 			session.Token,
 			session.IpAddress,

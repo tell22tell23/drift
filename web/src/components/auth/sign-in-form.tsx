@@ -1,8 +1,9 @@
-import React, { type SetStateAction } from "react";
+import { useState } from "react";
 
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form";
-import { z } from "zod";
+import { SignInFormSchema, type SignInType } from "@/types";
+import { useNavigate } from '@tanstack/react-router';
 
 import {
     Form,
@@ -14,24 +15,19 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-
-const SignInFormSchema = z.object({
-    email: z.string().email("Invalid email address"),
-    password: z.string().min(1, "Password is required"),
-});
-type SignInType = z.infer<typeof SignInFormSchema>;
+import { useMutation } from "@tanstack/react-query";
+import { RiAlertLine } from "react-icons/ri";
+import { auth } from "@/lib/auth/auth";
 
 interface SignInFormProps {
     redirectUrl: string;
-    loading: boolean;
-    setLoading: React.Dispatch<SetStateAction<boolean>>;
 };
 
 export const SignInForm = ({
     redirectUrl,
-    loading,
-    setLoading,
 }: SignInFormProps) => {
+    const navigate = useNavigate();
+    const [error, setError] = useState<string | null>(null);
     const form = useForm<SignInType>({
         resolver: zodResolver(SignInFormSchema),
         defaultValues: {
@@ -40,12 +36,15 @@ export const SignInForm = ({
         },
     });
 
+    const { mutate, isPending } = useMutation({
+        mutationFn: auth.signIn,
+        onSuccess: () => navigate({ to: redirectUrl }),
+        onError: () => setError("Failed to sign in. Please check your credentials and try again."),
+    });
+
     const onSubmit = async (values: SignInType) => {
-        //do some
-        setLoading(true);
-        console.log(values);
-        console.log("Redirecting to:", redirectUrl);
-        setLoading(false);
+        setError(null);
+        mutate(values);
     };
 
     return (
@@ -62,7 +61,7 @@ export const SignInForm = ({
                                 Email
                             </FormLabel>
                             <FormControl>
-                                <Input placeholder="john.doe@0.com" disabled={loading} {...field} />
+                                <Input placeholder="john.doe@0.com" disabled={isPending} {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -79,16 +78,24 @@ export const SignInForm = ({
                                 Password
                             </FormLabel>
                             <FormControl>
-                                <Input type="password" placeholder="******" disabled={loading} {...field} />
+                                <Input type="password" placeholder="******" disabled={isPending} {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
                     )}
                 />
+
+                { error && (
+                    <div className="text-destructive text-sm text-start flex items-start gap-2">
+                        <RiAlertLine className="size-3 mt-1" />
+                        <span>{error}</span>
+                    </div>
+                )}
+
                 <Button
                     variant="secondary"
                     type="submit"
-                    disabled={loading}
+                    disabled={isPending}
                     className="w-full"
                 >Sign In</Button>
             </form>

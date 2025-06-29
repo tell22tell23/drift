@@ -1,7 +1,16 @@
 import { AuthForm } from '@/components/auth/auth-form';
-import { createFileRoute } from '@tanstack/react-router';
+import { auth } from '@/lib/auth/auth';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/auth')({
+    beforeLoad: async () => {
+        const user = await auth.getSession();
+        if (user) {
+            throw redirect({
+                to: '/dashboard',
+            });
+        }
+    },
     component: Auth
 });
 

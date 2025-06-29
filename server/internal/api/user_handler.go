@@ -54,6 +54,19 @@ func (uh *UserHandler) HandleGetMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cookie, err := r.Cookie("session_token")
+	if err != nil {
+		utils.WriteJSON(w, http.StatusUnauthorized, utils.Envelope{"error": "Unauthorized"})
+		return
+	}
+	sessionToken := cookie.Value
+
+	session, err := uh.sessionStore.GetSessionByToken(sessionToken)
+	if err != nil || session == nil || session.ExpiresAt.Before(time.Now()) {
+		utils.WriteJSON(w, http.StatusUnauthorized, utils.Envelope{"error": "Session expired"})
+		return
+	}
+
 	user, err := uh.userStore.GetByID(userID)
 	if err != nil {
 		utils.WriteJSON(
@@ -64,7 +77,14 @@ func (uh *UserHandler) HandleGetMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.WriteJSON(w, http.StatusOK, utils.Envelope{"user": user})
+	utils.WriteJSON(
+		w,
+		http.StatusOK,
+		utils.Envelope{
+			"user":       user,
+			"expires_at": session.ExpiresAt.Format(time.RFC3339),
+		},
+	)
 }
 
 // GET /users/{id}
@@ -252,7 +272,7 @@ func (uh *UserHandler) HandleCredentialLogin(w http.ResponseWriter, r *http.Requ
 
 	createdSession, err := uh.sessionStore.CreateSession(session)
 	if err != nil {
-		uh.logger.Printf("Error creating session\n")
+		uh.logger.Printf("Error creating session: %v\n", err)
 		utils.WriteJSON(
 			w,
 			http.StatusInternalServerError,
