@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  drift_db:
+    container_name: "driftDB"
+    image: "postgres:16-alpine"
+    volumes:
+      - "./database/postgres-data:/var/lib/postgresql/data:rw"
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    restart: unless-stopped
+
+  drift_db_test:
+    container_name: "driftDB_test"
+    image: "postgres:16-alpine"
+    volumes:
+      - "./database/postgres-test-data:/var/lib/postgresql/data:rw"
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    restart: unless-stopped

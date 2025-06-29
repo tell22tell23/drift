@@ -1,0 +1,18 @@
+{
+    "name": "drift",
+    "module": "index.ts",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "start:dev": "concurrently -k -n \"DB,BACKEND,FRONTEND\" -c \"blue,green,yellow\" \"docker compose -f ./server/docker-compose.yml up --build\" \"cd ./server && air\" \"cd ./web && bun run dev\""
+    },
+    "devDependencies": {
+        "@types/bun": "latest"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    },
+    "dependencies": {
+        "concurrently": "^9.2.0"
+    }
+}

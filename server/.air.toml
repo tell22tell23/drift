@@ -1,0 +1,17 @@
+root = "."
+tmp_dir = "tmp"
+main = "main.go"
+
+include_ext = ["go", "tpl", "tmpl", "html"]
+
+[build]
+  cmd = "go build -o ./tmp/main main.go"
+  bin = "./tmp/main"
+  exclude_dir = ["assets", "tmp", "vendor", "database"]
+  # You can customize further if needed:
+  # exclude_file = []
+  # exclude_regex = []
+  # delay = 0
+
+# Optional: custom run command (default is ./tmp/main)
+# run_cmd = "./tmp/main"
