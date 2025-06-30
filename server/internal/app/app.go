@@ -14,7 +14,8 @@ type Application struct {
 	Logger *log.Logger
 	DB     *sql.DB
 
-	userHandler *api.UserHandler
+	userHandler   *api.UserHandler
+	signalMessage *api.SignalingMessage
 }
 
 func NewApplication() (*Application, error) {
@@ -40,13 +41,20 @@ func NewApplication() (*Application, error) {
 	sessionStore := store.NewPgSessionStore(pgDB)
 	userHandler := api.NewUserHandler(userStore, accountStore, sessionStore, logger)
 
+	signalMessage := api.NewSignalingMessage(logger)
+
 	return &Application{
-		Logger:      logger,
-		DB:          pgDB,
-		userHandler: userHandler,
+		Logger:        logger,
+		DB:            pgDB,
+		userHandler:   userHandler,
+		signalMessage: signalMessage,
 	}, nil
 }
 
 func (a *Application) UserHandler() *api.UserHandler {
 	return a.userHandler
+}
+
+func (a *Application) SignalingMessage() *api.SignalingMessage {
+	return a.signalMessage
 }

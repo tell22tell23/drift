@@ -2,7 +2,6 @@ import { auth } from "@/lib/auth/auth";
 import {
     createFileRoute,
     redirect,
-    useNavigate,
     useRouteContext,
 } from "@tanstack/react-router";
 
@@ -28,7 +27,6 @@ export const Route = createFileRoute('/dashboard')({
 
 
 function Dashboard() {
-    const navigate = useNavigate();
     const { user } = useRouteContext({ from: "/dashboard" });
 
     return (

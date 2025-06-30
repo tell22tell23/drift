@@ -12,7 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as DemoTanstackQueryRouteImport } from './routes/demo.tanstack-query'
+import { Route as DftDftIDRouteImport } from './routes/dft.$dftID'
 
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
@@ -29,9 +29,9 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
-  id: '/demo/tanstack-query',
-  path: '/demo/tanstack-query',
+const DftDftIDRoute = DftDftIDRouteImport.update({
+  id: '/dft/$dftID',
+  path: '/dft/$dftID',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -39,34 +39,34 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/dft/$dftID': typeof DftDftIDRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/dft/$dftID': typeof DftDftIDRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/dft/$dftID': typeof DftDftIDRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/dashboard' | '/demo/tanstack-query'
+  fullPaths: '/' | '/auth' | '/dashboard' | '/dft/$dftID'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard' | '/demo/tanstack-query'
-  id: '__root__' | '/' | '/auth' | '/dashboard' | '/demo/tanstack-query'
+  to: '/' | '/auth' | '/dashboard' | '/dft/$dftID'
+  id: '__root__' | '/' | '/auth' | '/dashboard' | '/dft/$dftID'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
   DashboardRoute: typeof DashboardRoute
-  DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
+  DftDftIDRoute: typeof DftDftIDRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -92,11 +92,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/tanstack-query': {
-      id: '/demo/tanstack-query'
-      path: '/demo/tanstack-query'
-      fullPath: '/demo/tanstack-query'
-      preLoaderRoute: typeof DemoTanstackQueryRouteImport
+    '/dft/$dftID': {
+      id: '/dft/$dftID'
+      path: '/dft/$dftID'
+      fullPath: '/dft/$dftID'
+      preLoaderRoute: typeof DftDftIDRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -106,7 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   DashboardRoute: DashboardRoute,
-  DemoTanstackQueryRoute: DemoTanstackQueryRoute,
+  DftDftIDRoute: DftDftIDRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

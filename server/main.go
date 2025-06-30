@@ -42,10 +42,6 @@ func main() {
 		MaxAge:           300, // Max age for preflight in seconds
 	}))
 
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello, World!"))
-	})
-
 	r.Post("/auth/register", app.UserHandler().HandleCredentialCreateUser)
 	r.Post("/auth/login", app.UserHandler().HandleCredentialLogin)
 	r.Post("/auth/logout", app.UserHandler().HandleLogout)
@@ -53,6 +49,13 @@ func main() {
 	// not done yet
 	// r.Get("/auth/{provider}", app.UserHandler().HandleOAuthRedirect)
 	// r.Get("/auth/{provider}/callback", app.UserHandler().HandleOAuthCallback)
+
+	r.Route("/signal", func(protected chi.Router) {
+		protected.Use(app.UserHandler().SessionAuthMiddleware)
+
+		protected.Get("/", app.SignalingMessage().HandleSignaling)
+		protected.Get("/stats", app.SignalingMessage().HandleStats)
+	})
 
 	r.Route("/users", func(protected chi.Router) {
 		protected.Use(app.UserHandler().SessionAuthMiddleware)
