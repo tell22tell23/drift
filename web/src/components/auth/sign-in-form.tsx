@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form";
-import { SignInFormSchema, type SignInType } from "@/types";
+import { SignInFormSchema, type SignIn } from "@/types/auth";
 import { useNavigate } from '@tanstack/react-router';
 
 import {
@@ -28,7 +28,7 @@ export const SignInForm = ({
 }: SignInFormProps) => {
     const navigate = useNavigate();
     const [error, setError] = useState<string | null>(null);
-    const form = useForm<SignInType>({
+    const form = useForm<SignIn>({
         resolver: zodResolver(SignInFormSchema),
         defaultValues: {
             email: "",
@@ -42,7 +42,7 @@ export const SignInForm = ({
         onError: () => setError("Failed to sign in. Please check your credentials and try again."),
     });
 
-    const onSubmit = async (values: SignInType) => {
+    const onSubmit = async (values: SignIn) => {
         setError(null);
         mutate(values);
     };

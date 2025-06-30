@@ -1,5 +1,4 @@
 import { auth } from "@/lib/auth/auth";
-import { useMutation } from "@tanstack/react-query";
 import {
     createFileRoute,
     redirect,
@@ -8,7 +7,11 @@ import {
 } from "@tanstack/react-router";
 
 import { Header } from "@/components/layout/header";
-import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import {
+    DashboardHero,
+    RepoBrowser,
+} from "@/components/layout/dashboard";
 
 export const Route = createFileRoute('/dashboard')({
     beforeLoad: async () => {
@@ -23,31 +26,21 @@ export const Route = createFileRoute('/dashboard')({
     component: Dashboard
 });
 
+
 function Dashboard() {
     const navigate = useNavigate();
     const { user } = useRouteContext({ from: "/dashboard" });
-    console.log("User:", user);
-
-    const { mutate, isPending } = useMutation({
-        mutationFn: auth.signOut,
-        onSuccess: () => navigate({ to: "/auth" }),
-        onError: (error) => {
-            console.error("Error signing out user:", error);
-        },
-    });
 
     return (
-        <section className="max-w-md mx-auto">
-            <Header />
-            <Button
-                variant="secondary"
-                className="mt-4 cursor-pointer"
-                onClick={() => mutate()}
-                disabled={isPending}
-            >
-                {isPending ? "Signing out..." : "Sign Out"}
-            </Button>
-        </section>
+        <main className="max-w-2xl mx-auto">
+            <Header className="mb-10" />
+
+            <DashboardHero user={user} />
+
+            <Separator className="mt-6 mb-4" />
+
+            <RepoBrowser />
+        </main>
     );
 }
 

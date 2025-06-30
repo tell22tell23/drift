@@ -43,11 +43,7 @@ export function AuthForm({ redirectUrl = "/dashboard" } : SignInForm) {
             </CardHeader>
             <CardContent>
                 { type === "signin" ? (
-                    <SignInForm
-                        redirectUrl={redirectUrl}
-                        loading={loading}
-                        setLoading={setLoading}
-                    />
+                    <SignInForm redirectUrl={redirectUrl}/>
                 ) : (
                         <SignUpForm setType={setType}/>
                     )

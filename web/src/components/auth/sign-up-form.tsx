@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useMutation } from "@tanstack/react-query";
-import { SignUpFormSchema, type SignUpType } from "@/types";
+import { SignUpFormSchema, type SignUp} from "@/types/auth";
 import { auth } from "@/lib/auth/auth";
 
 interface SignUpFormProps {
@@ -24,7 +24,7 @@ interface SignUpFormProps {
 
 export const SignUpForm = ({ setType }: SignUpFormProps) => {
     const [error, setError] = React.useState<string | null>(null);
-    const form = useForm<SignUpType>({
+    const form = useForm<SignUp>({
         resolver: zodResolver(SignUpFormSchema),
         defaultValues: {
             name: "",
@@ -39,7 +39,7 @@ export const SignUpForm = ({ setType }: SignUpFormProps) => {
         onError: () => setError("Failed to register. Please try again."),
     });
 
-    const onSubmit = async (values: SignUpType) => {
+    const onSubmit = async (values: SignUp) => {
         setError(null);
         mutate(values);
     };
