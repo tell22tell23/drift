@@ -3,8 +3,11 @@ package utils
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -67,4 +70,39 @@ func GetIPAddr(r *http.Request) string {
 
 func IsValidEmail(email string) bool {
 	return emailRegex.MatchString(email)
+}
+
+func CheckRepoExistence(addr string) (bool, error) {
+	// addr should be in `dft@<repo-name>.drift` format
+	parts := strings.Split(addr, "@")
+	if parts[0] != "dft" || len(parts) != 2 {
+		return false, errors.New("Invalid address format, expected dft@<repo-name>.drift")
+	}
+	parts = strings.Split(parts[1], ".")
+	if parts[1] != "drift" || len(parts) != 2 {
+		return false, errors.New("Invalid address format, expected dft@<repo-name>.drift")
+	}
+
+	fmt.Printf("repo name: %s\n", parts[0])
+	// TODO: check repo name existence in the database
+
+	return true, nil
+}
+
+func UpdateConfig(configPath, addr string) error {
+	return nil
+}
+
+func IsRepo() bool {
+	dir := ".drift"
+	for {
+		if _, err := os.Stat(dir); err == nil {
+			return true
+		}
+		if dir == "." {
+			break
+		}
+		dir = filepath.Join("..", dir)
+	}
+	return false
 }
