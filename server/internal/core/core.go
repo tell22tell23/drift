@@ -1,12 +1,14 @@
 package core
 
 import (
+	"bytes"
+	"compress/zlib"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/sammanbajracharya/drift/internal/store"
 	"github.com/sammanbajracharya/drift/internal/utils"
 )
@@ -17,29 +19,14 @@ type Context struct {
 
 type Command interface {
 	InitRepo() error
-	Connect(addr string) error
-	ConnectList() error
-	ConnectAdd(peer string) error
-	ConnectRemove(peer string) error
+	Add(path string) error
 }
 
-func InitRepo() error {
-	root := "."
+func (c *Context) InitRepo() error {
 	repoPath := ".drift"
 
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip this entry
-		}
-
-		if d.IsDir() && d.Name() == repoPath {
-			return fmt.Errorf("Drift Repository already exists")
-		}
-		return nil
-	})
-
-	if err != nil {
-		return err
+	if _, err := os.Stat(".drift"); err == nil {
+		return fmt.Errorf("Drift repository already exists")
 	}
 
 	if err := os.MkdirAll(repoPath, 0755); err != nil {
@@ -55,89 +42,164 @@ func InitRepo() error {
 	}
 
 	configPath := filepath.Join(repoPath, "config")
-	configFile, err := os.OpenFile(configPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("Error creating config file")
-	}
-	defer configFile.Close()
-
 	genID := utils.GenerateUUID() // use libp2p peer ID
 	config := fmt.Sprintf(`[peer]
 		id = %s
 		address =
 		`, genID)
 
-	if _, err := configFile.WriteString(config); err != nil {
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		return fmt.Errorf("Error writing to config file")
 	}
 
+	headPath := filepath.Join(repoPath, "HEAD")
+	headContent := "ref: refs/heads/main\n"
+	if err := os.WriteFile(headPath, []byte(headContent), 0644); err != nil {
+		return fmt.Errorf("Error writing HEAD file")
+	}
+
 	return nil
 }
 
-func (ctx *Context) ConnectList() error {
-	// Here you would implement the logic to list connected peers.
+// TODO:
+// add .driftignore feature
+// add garbage collection feature
+func (c *Context) Add(path string) error {
+	if err := checkInitialized(); err != nil {
+		return err
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("failed to resolve absolute path: %v", err)
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return fmt.Errorf("file or directory does not exist: %w", err)
+	}
+
+	repoRoot, err := findDriftRoot(absPath)
+	if err != nil {
+		return fmt.Errorf("failed to find Drift repository root: %v", err)
+	}
+
+	if info.IsDir() {
+		return filepath.WalkDir(absPath, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() && d.Name() == ".drift" {
+				return filepath.SkipDir
+			}
+			if d.IsDir() {
+				return nil
+			}
+			return addFile(path, repoRoot)
+		})
+	} else {
+		return addFile(absPath, repoRoot)
+	}
+}
+
+func addFile(path, repoRoot string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("Error reading file %s: %v", path, err)
+	}
+
+	header := fmt.Sprintf("blob %d\x00", len(content))
+	blob := append([]byte(header), content...)
+
+	hashBytes := sha256.Sum256(blob)
+	hash := hex.EncodeToString(hashBytes[:])
+
+	var compressed bytes.Buffer
+	w := zlib.NewWriter(&compressed)
+	_, err = w.Write(blob)
+	if err != nil {
+		return fmt.Errorf("Error compressing file %s: %v", path, err)
+	}
+	w.Close()
+
+	objectDir := filepath.Join(".drift", "objects", hash[:2])
+	objectPath := filepath.Join(objectDir, hash[2:])
+
+	if err := os.MkdirAll(objectDir, 0755); err != nil {
+		return fmt.Errorf("Error creating object directory %s: %v", objectDir, err)
+	}
+
+	if _, err := os.Stat(objectPath); os.IsNotExist(err) {
+		err = os.WriteFile(objectPath, compressed.Bytes(), 0644)
+		if err != nil {
+			return fmt.Errorf("Error writing compressed file %s: %v", objectPath, err)
+		}
+	}
+
+	indexPath := filepath.Join(".drift", "index")
+	relPath, err := filepath.Rel(repoRoot, path)
+	if err != nil {
+		return fmt.Errorf("failed to get relative path: %v", err)
+	}
+	existing, _ := os.ReadFile(indexPath)
+	entry := fmt.Sprintf("100644 %s %s\n", hash, relPath)
+
+	if !bytes.Contains(existing, []byte(entry)) {
+		f, err := os.OpenFile(indexPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return fmt.Errorf("error opening index file: %v", err)
+		}
+		defer f.Close()
+
+		if _, err := f.WriteString(entry); err != nil {
+			return fmt.Errorf("error writing to index file: %v", err)
+		}
+	}
+
+	fmt.Printf("Added %s as object %s\n", path, hash)
 	return nil
 }
 
-func (ctx *Context) Connect(addr string) error {
-	// 1. Check if the addr associated drift repository exists
-	repoExists, err := ctx.RepoStore.CheckRepoExistence(addr)
+func checkInitialized() error {
+	startDir, _ := os.Getwd()
+	driftRoot, err := findDriftRoot(startDir)
 	if err != nil {
-		return fmt.Errorf("%v", err.Error())
+		return err
 	}
-	if !repoExists {
-		return fmt.Errorf("no Drift repository found at %s", addr)
+
+	objectsDir := filepath.Join(driftRoot, ".drift", "objects")
+	indexPath := filepath.Join(driftRoot, ".drift", "index")
+
+	if _, err := os.Stat(objectsDir); os.IsNotExist(err) {
+		return fmt.Errorf("fatal: missing objects directory: %s", objectsDir)
 	}
-	// 2. set the address in the config file
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get user home directory: %v", err)
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		err := os.WriteFile(indexPath, []byte{}, 0644)
+		if err != nil {
+			return fmt.Errorf("error creating index: %v", err)
+		}
 	}
-	configPath := filepath.Join(homeDir, ".drift", "config.yaml")
-	err = utils.UpdateConfig(configPath, addr) // just a stub function
-	if err != nil {
-		return fmt.Errorf("failed to update config file")
+
+	return nil
+}
+
+func findDriftRoot(startDir string) (string, error) {
+	dir := startDir
+
+	for {
+		driftPath := filepath.Join(dir, ".drift")
+		if stat, err := os.Stat(driftPath); err == nil && stat.IsDir() {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break // reached the root "/"
+		}
+		dir = parent
 	}
-	// 3. Connect to the peer
-	h, _ := libp2p.New(
-		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/4001"),
+
+	return "", fmt.Errorf(
+		"fatal: not a Drift repository (or any of the parent directories): .drift",
 	)
-	h.SetStreamHandler("/drift/sync/1.0.0", func(s network.Stream) {
-		fmt.Printf("New incomming stream")
-		go handleSync(s)
-	})
-	// 4. Create & Update ~/.drift/remotes.yaml, ~/.drift/config.yaml
-	// 5. Add content of .drift/peers
-	// complete this
-
-	return nil
-}
-
-func (ctx *Context) ConnectRemove(addr string) error {
-	// Here you would implement the logic to connect to a Drift repository.
-	// For now, we just return nil to indicate success.
-	return nil
-}
-
-func Add(path string) error {
-	// Here you would implement the logic to add a file or directory to the Drift repository.
-	// For now, we just return nil to indicate success.
-	return nil
-}
-
-func handleSync(s network.Stream) {
-	// Handle the incoming stream for synchronization.
-	// This is a stub function for now.
-	fmt.Printf("Handling sync stream from %s\n", s.Conn().RemotePeer())
-	defer s.Close()
-
-	// You can read from the stream and write to it as needed.
-	// For example:
-	// buf := make([]byte, 1024)
-	// n, err := s.Read(buf)
-	// if err != nil {
-	//     fmt.Printf("Error reading from stream: %v\n", err)
-	//     return
-	// }
-	// fmt.Printf("Received data: %s\n", string(buf[:n]))
 }
