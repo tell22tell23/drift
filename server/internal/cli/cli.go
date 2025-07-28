@@ -1,29 +1,21 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/sammanbajracharya/drift/internal/core"
-	"github.com/sammanbajracharya/drift/internal/store"
 	"github.com/urfave/cli/v2"
 )
 
 type App struct {
-	args      []string
-	repoStore store.RepoStore
+	args []string
 }
 
-func NewApp() (*App, error) {
-	pgDB, err := store.Open()
-	if err != nil {
-		return nil, err
-	}
-
-	repoStore := store.NewPgRepoStore(pgDB)
-	args := os.Args
-
-	return &App{args: args, repoStore: repoStore}, nil
+func NewApp() *App {
+	return &App{args: os.Args}
 }
 
 func (a *App) Run() error {
@@ -35,11 +27,13 @@ func (a *App) Run() error {
 				Name:  "init",
 				Usage: "Initialize a new Drift repository",
 				Action: func(c *cli.Context) error {
-					ctx := &core.Context{RepoStore: a.repoStore}
+					start := time.Now()
+					defer func() {
+						fmt.Printf("Execution time: %s\n", time.Since(start))
+					}()
+					ctx := &core.Context{}
 					if err := ctx.InitRepo(); err != nil {
-						return cli.Exit(
-							err.Error(), 1,
-						)
+						return cli.Exit(err.Error(), 1)
 					}
 					dir, err := os.Getwd()
 					if err != nil {
@@ -55,11 +49,15 @@ func (a *App) Run() error {
 				Name:  "add",
 				Usage: "Add a file or folder to the Drift repository",
 				Action: func(c *cli.Context) error {
+					start := time.Now()
+					defer func() {
+						fmt.Printf("Execution time: %s\n", time.Since(start))
+					}()
 					path := c.Args().First()
 					if path == "" {
 						return cli.Exit("Please specify a file or folder to add", 1)
 					}
-					ctx := &core.Context{RepoStore: a.repoStore}
+					ctx := &core.Context{}
 					if err := ctx.Add(path); err != nil {
 						return err
 					}

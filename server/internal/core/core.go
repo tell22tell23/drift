@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/sammanbajracharya/drift/internal/store"
 	"github.com/sammanbajracharya/drift/internal/utils"
@@ -34,10 +35,25 @@ func (c *Context) InitRepo() error {
 	}
 
 	subDirs := []string{"objects", "refs/heads", "peers", "sync", "log"}
+	errCh := make(chan error, len(subDirs))
+	var wg sync.WaitGroup
 	for _, dir := range subDirs {
-		path := filepath.Join(".drift", dir)
-		if err := os.MkdirAll(path, 0755); err != nil {
-			return fmt.Errorf("Error creating subdirectory %s", dir)
+		wg.Add(1)
+		go func(d string) {
+			defer wg.Done()
+			path := filepath.Join(".drift", dir)
+			if err := os.MkdirAll(path, 0755); err != nil {
+				errCh <- fmt.Errorf("Error creating subdirectory %s", dir)
+			}
+		}(dir)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			return err
 		}
 	}
 
@@ -156,7 +172,6 @@ func addFile(path, repoRoot string) error {
 		}
 	}
 
-	fmt.Printf("Added %s as object %s\n", path, hash)
 	return nil
 }
 
