@@ -130,6 +130,20 @@ func addFile(path, repoRoot string) error {
 	hashBytes := sha256.Sum256(blob)
 	hash := hex.EncodeToString(hashBytes[:])
 
+	relPath, err := filepath.Rel(repoRoot, path)
+	if err != nil {
+		return fmt.Errorf("failed to get relative path: %v", err)
+	}
+	entry := fmt.Sprintf("100644 %s %s\n", hash, relPath)
+	indexPath := filepath.Join(".drift", "index")
+	existingIndex, err := os.ReadFile(indexPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("Error reading index file: %v", err)
+	}
+	if bytes.Contains(existingIndex, []byte(entry)) {
+		return nil
+	}
+
 	var compressed bytes.Buffer
 	w := zlib.NewWriter(&compressed)
 	_, err = w.Write(blob)
@@ -152,24 +166,14 @@ func addFile(path, repoRoot string) error {
 		}
 	}
 
-	indexPath := filepath.Join(".drift", "index")
-	relPath, err := filepath.Rel(repoRoot, path)
+	f, err := os.OpenFile(indexPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to get relative path: %v", err)
+		return fmt.Errorf("error opening index file: %v", err)
 	}
-	existing, _ := os.ReadFile(indexPath)
-	entry := fmt.Sprintf("100644 %s %s\n", hash, relPath)
+	defer f.Close()
 
-	if !bytes.Contains(existing, []byte(entry)) {
-		f, err := os.OpenFile(indexPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return fmt.Errorf("error opening index file: %v", err)
-		}
-		defer f.Close()
-
-		if _, err := f.WriteString(entry); err != nil {
-			return fmt.Errorf("error writing to index file: %v", err)
-		}
+	if _, err := f.WriteString(entry); err != nil {
+		return fmt.Errorf("error writing to index file: %v", err)
 	}
 
 	return nil
