@@ -2,12 +2,12 @@ package core
 
 import (
 	"bytes"
-	"compress/zlib"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/sammanbajracharya/drift/internal/store"
@@ -21,6 +21,12 @@ type Context struct {
 type Command interface {
 	InitRepo() error
 	Add(path string) error
+	Status() error
+}
+
+type IndexEntry struct {
+	Hash string
+	Seen bool
 }
 
 func (c *Context) InitRepo() error {
@@ -81,7 +87,7 @@ func (c *Context) InitRepo() error {
 // add .driftignore feature
 // add garbage collection feature
 func (c *Context) Add(path string) error {
-	if err := checkInitialized(); err != nil {
+	if err := utils.CheckInitialized(); err != nil {
 		return err
 	}
 
@@ -95,7 +101,7 @@ func (c *Context) Add(path string) error {
 		return fmt.Errorf("file or directory does not exist: %w", err)
 	}
 
-	repoRoot, err := findDriftRoot(absPath)
+	repoRoot, err := utils.FindDriftRoot(absPath)
 	if err != nil {
 		return fmt.Errorf("failed to find Drift repository root: %v", err)
 	}
@@ -111,114 +117,132 @@ func (c *Context) Add(path string) error {
 			if d.IsDir() {
 				return nil
 			}
-			return addFile(path, repoRoot)
+			return utils.AddFile(path, repoRoot)
 		})
 	} else {
-		return addFile(absPath, repoRoot)
+		return utils.AddFile(absPath, repoRoot)
 	}
 }
 
-func addFile(path, repoRoot string) error {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("Error reading file %s: %v", path, err)
-	}
-
-	header := fmt.Sprintf("blob %d\x00", len(content))
-	blob := append([]byte(header), content...)
-
-	hashBytes := sha256.Sum256(blob)
-	hash := hex.EncodeToString(hashBytes[:])
-
-	relPath, err := filepath.Rel(repoRoot, path)
-	if err != nil {
-		return fmt.Errorf("failed to get relative path: %v", err)
-	}
-	entry := fmt.Sprintf("100644 %s %s\n", hash, relPath)
-	indexPath := filepath.Join(".drift", "index")
-	existingIndex, err := os.ReadFile(indexPath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("Error reading index file: %v", err)
-	}
-	if bytes.Contains(existingIndex, []byte(entry)) {
-		return nil
-	}
-
-	var compressed bytes.Buffer
-	w := zlib.NewWriter(&compressed)
-	_, err = w.Write(blob)
-	if err != nil {
-		return fmt.Errorf("Error compressing file %s: %v", path, err)
-	}
-	w.Close()
-
-	objectDir := filepath.Join(".drift", "objects", hash[:2])
-	objectPath := filepath.Join(objectDir, hash[2:])
-
-	if err := os.MkdirAll(objectDir, 0755); err != nil {
-		return fmt.Errorf("Error creating object directory %s: %v", objectDir, err)
-	}
-
-	if _, err := os.Stat(objectPath); os.IsNotExist(err) {
-		err = os.WriteFile(objectPath, compressed.Bytes(), 0644)
-		if err != nil {
-			return fmt.Errorf("Error writing compressed file %s: %v", objectPath, err)
-		}
-	}
-
-	f, err := os.OpenFile(indexPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("error opening index file: %v", err)
-	}
-	defer f.Close()
-
-	if _, err := f.WriteString(entry); err != nil {
-		return fmt.Errorf("error writing to index file: %v", err)
-	}
-
-	return nil
-}
-
-func checkInitialized() error {
-	startDir, _ := os.Getwd()
-	driftRoot, err := findDriftRoot(startDir)
-	if err != nil {
+func (c *Context) Status() error {
+	if err := utils.CheckInitialized(); err != nil {
 		return err
 	}
 
-	objectsDir := filepath.Join(driftRoot, ".drift", "objects")
-	indexPath := filepath.Join(driftRoot, ".drift", "index")
-
-	if _, err := os.Stat(objectsDir); os.IsNotExist(err) {
-		return fmt.Errorf("fatal: missing objects directory: %s", objectsDir)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %v", err)
 	}
-	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
-		err := os.WriteFile(indexPath, []byte{}, 0644)
-		if err != nil {
-			return fmt.Errorf("error creating index: %v", err)
+
+	repoRoot, err := utils.FindDriftRoot(cwd)
+	if err != nil {
+		return fmt.Errorf("failed to find Drift repository root: %v", err)
+	}
+
+	headFile, err := os.ReadFile(filepath.Join(repoRoot, ".drift", "HEAD"))
+	if err != nil {
+		return fmt.Errorf("failed to read HEAD file: %v", err)
+	}
+	parts := strings.Split(strings.TrimSpace(string(headFile)), "/")
+	branchName := parts[len(parts)-1]
+
+	indexPath := filepath.Join(repoRoot, ".drift", "index")
+	indexMap := map[string]*IndexEntry{}
+	if data, err := os.ReadFile(indexPath); err == nil {
+		lines := bytes.Split(data, []byte("\n"))
+		for _, line := range lines {
+			if len(line) == 0 {
+				continue
+			}
+			parts := bytes.SplitN(line, []byte(" "), 3)
+			if len(parts) < 3 {
+				continue
+			}
+			indexMap[string(parts[2])] = &IndexEntry{Hash: string(parts[1]), Seen: false}
 		}
+	}
+
+	modifiedFiles := []string{}
+	untrackedFiles := []string{}
+	deletedFiles := []string{}
+
+	err = filepath.WalkDir(repoRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() && d.Name() == ".drift" {
+			return filepath.SkipDir
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(repoRoot, path)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %v", err)
+		}
+		blob, err := utils.GetBlob(path)
+		if err != nil {
+			return fmt.Errorf("failed to get blob for %s: %v", path, err)
+		}
+		hashBytes := sha256.Sum256(blob)
+		hash := hex.EncodeToString(hashBytes[:])
+
+		if entry, ok := indexMap[relPath]; ok {
+			entry.Seen = true
+			if entry.Hash != hash {
+				modifiedFiles = append(modifiedFiles, relPath)
+			}
+		} else {
+			untrackedFiles = append(untrackedFiles, relPath)
+		}
+
+		return nil
+	})
+
+	for relPath, entry := range indexMap {
+		if !entry.Seen {
+			deletedFiles = append(deletedFiles, relPath)
+		}
+	}
+
+	fmt.Printf("On branch %s\n", branchName)
+	fmt.Println("Your branch is up to date with 'origin/" + branchName + "'.")
+	fmt.Println()
+
+	if len(modifiedFiles) > 0 {
+		fmt.Println("Changes not staged for commit:")
+		fmt.Println(`  (use "drift add <file>..." to update what will be committed)`)
+		fmt.Println(`  (use "drift restore <file>..." to discard changes in working directory)`)
+		for _, file := range modifiedFiles {
+			fmt.Printf("        \033[34mmodified:   %s\033[0m\n", file)
+		}
+		fmt.Println()
+	}
+
+	if len(untrackedFiles) > 0 {
+		fmt.Println("Untracked files:")
+		fmt.Println(`  (use "drift add <file>..." to include in what will be committed)`)
+		for _, file := range untrackedFiles {
+			fmt.Printf("        \033[31m%s\033[0m\n", file)
+		}
+		fmt.Println()
+	}
+
+	if len(deletedFiles) > 0 {
+		fmt.Println("Deleted files:")
+		fmt.Println(`  (use "drift restore <file>..." to restore or "drift rm" to remove)`)
+		for _, file := range deletedFiles {
+			fmt.Printf("        \033[31mdeleted:   %s\033[0m\n", file)
+		}
+		fmt.Println()
+	}
+
+	if len(modifiedFiles) == 0 && len(untrackedFiles) == 0 {
+		fmt.Println("nothing to commit, working tree clean")
+	} else {
+		fmt.Println("no changes added to commit (use \"drift add\" and/or \"drift commit -a\")")
 	}
 
 	return nil
-}
-
-func findDriftRoot(startDir string) (string, error) {
-	dir := startDir
-
-	for {
-		driftPath := filepath.Join(dir, ".drift")
-		if stat, err := os.Stat(driftPath); err == nil && stat.IsDir() {
-			return dir, nil
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break // reached the root "/"
-		}
-		dir = parent
-	}
-
-	return "", fmt.Errorf(
-		"fatal: not a Drift repository (or any of the parent directories): .drift",
-	)
 }

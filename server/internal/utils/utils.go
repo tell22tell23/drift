@@ -1,6 +1,10 @@
 package utils
 
 import (
+	"bytes"
+	"compress/zlib"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -105,4 +109,117 @@ func IsRepo() bool {
 		dir = filepath.Join("..", dir)
 	}
 	return false
+}
+
+func GetBlob(path string) ([]byte, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("Error reading file %s: %v", path, err)
+	}
+
+	header := fmt.Sprintf("blob %d\x00", len(content))
+	blob := append([]byte(header), content...)
+	return blob, nil
+}
+
+func AddFile(path, repoRoot string) error {
+	blob, err := GetBlob(path)
+	if err != nil {
+		return err
+	}
+	hashBytes := sha256.Sum256(blob)
+	hash := hex.EncodeToString(hashBytes[:])
+
+	relPath, err := filepath.Rel(repoRoot, path)
+	if err != nil {
+		return fmt.Errorf("failed to get relative path: %v", err)
+	}
+	entry := fmt.Sprintf("100644 %s %s\n", hash, relPath)
+
+	indexPath := filepath.Join(".drift", "index")
+	existingIndex, err := os.ReadFile(indexPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("Error reading index file: %v", err)
+	}
+	if bytes.Contains(existingIndex, []byte(entry)) {
+		return nil
+	}
+
+	var compressed bytes.Buffer
+	w := zlib.NewWriter(&compressed)
+	_, err = w.Write(blob)
+	if err != nil {
+		return fmt.Errorf("Error compressing file %s: %v", path, err)
+	}
+	w.Close()
+
+	objectDir := filepath.Join(".drift", "objects", hash[:2])
+	objectPath := filepath.Join(objectDir, hash[2:])
+
+	if err := os.MkdirAll(objectDir, 0755); err != nil {
+		return fmt.Errorf("Error creating object directory %s: %v", objectDir, err)
+	}
+
+	if _, err := os.Stat(objectPath); os.IsNotExist(err) {
+		err = os.WriteFile(objectPath, compressed.Bytes(), 0644)
+		if err != nil {
+			return fmt.Errorf("Error writing compressed file %s: %v", objectPath, err)
+		}
+	}
+
+	f, err := os.OpenFile(indexPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("error opening index file: %v", err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(entry); err != nil {
+		return fmt.Errorf("error writing to index file: %v", err)
+	}
+
+	return nil
+}
+
+func CheckInitialized() error {
+	startDir, _ := os.Getwd()
+	driftRoot, err := FindDriftRoot(startDir)
+	if err != nil {
+		return err
+	}
+
+	objectsDir := filepath.Join(driftRoot, ".drift", "objects")
+	indexPath := filepath.Join(driftRoot, ".drift", "index")
+
+	if _, err := os.Stat(objectsDir); os.IsNotExist(err) {
+		return fmt.Errorf("fatal: missing objects directory: %s", objectsDir)
+	}
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		err := os.WriteFile(indexPath, []byte{}, 0644)
+		if err != nil {
+			return fmt.Errorf("error creating index: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func FindDriftRoot(startDir string) (string, error) {
+	dir := startDir
+
+	for {
+		driftPath := filepath.Join(dir, ".drift")
+		if stat, err := os.Stat(driftPath); err == nil && stat.IsDir() {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break // reached the root "/"
+		}
+		dir = parent
+	}
+
+	return "", fmt.Errorf(
+		"fatal: not a Drift repository (or any of the parent directories): .drift",
+	)
 }
