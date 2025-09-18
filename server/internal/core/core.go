@@ -9,9 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/sammanbajracharya/drift/internal/cli/utils"
 	"github.com/sammanbajracharya/drift/internal/store"
-	"github.com/sammanbajracharya/drift/internal/utils"
 )
 
 type Context struct {
@@ -22,6 +23,7 @@ type Command interface {
 	InitRepo() error
 	Add(path string) error
 	Status() error
+	Commit(msg string) error
 }
 
 type IndexEntry struct {
@@ -244,5 +246,73 @@ func (c *Context) Status() error {
 		fmt.Println("no changes added to commit (use \"drift add\" and/or \"drift commit -a\")")
 	}
 
+	return nil
+}
+
+func (c *Context) Commit(msg string) error {
+	if err := utils.CheckInitialized(); err != nil {
+		return err
+	}
+
+	indexPath := filepath.Join(".drift", "index")
+	existingIndex, err := os.ReadFile(indexPath)
+	if err != nil {
+		return fmt.Errorf("Error reading index file: %v", err)
+	}
+	if len(existingIndex) == 0 {
+		return fmt.Errorf("nothing to commit")
+	}
+
+	entries, err := utils.ParseIndex(existingIndex)
+	if err != nil {
+		return fmt.Errorf("failed to write tree: %v", err)
+	}
+
+	repoRoot, err := utils.FindDriftRoot(indexPath)
+
+	treeHash, err := utils.BuildTree(entries, repoRoot)
+	if err != nil {
+		return fmt.Errorf("failed to build tree: %v", err)
+	}
+
+	author := "YourName <you@example.com>"
+	timestamp := time.Now().Unix()
+	commitContent := fmt.Sprintf(
+		"tree %s\nauthor %s %d +0000\ncommitter %s %d +0000\n\n%s\n",
+		treeHash,
+		author,
+		timestamp,
+		author,
+		timestamp,
+		msg,
+	)
+
+	commitHash, err := utils.WriteObject(repoRoot, "commit", []byte(commitContent))
+	if err != nil {
+		return fmt.Errorf("failed to write commit object: %v", err)
+	}
+
+	headPath := filepath.Join(repoRoot, ".drift", "HEAD")
+	headData, err := os.ReadFile(headPath)
+	if err != nil {
+		return fmt.Errorf("failed to read HEAD file: %v", err)
+	}
+
+	if bytes.HasPrefix(headData, []byte("ref: ")) {
+		branchRef := strings.TrimSpace(strings.TrimPrefix(string(headData), "ref: "))
+		if err := os.WriteFile(filepath.Join(repoRoot, ".drift/", branchRef), []byte(commitHash), 0644); err != nil {
+			return fmt.Errorf("failed to update branch ref: %v", err)
+		}
+	} else {
+		if err := os.WriteFile(headPath, []byte(commitHash), 0644); err != nil {
+			return fmt.Errorf("failed to update HEAD: %v", err)
+		}
+	}
+
+	if err := os.WriteFile(indexPath, []byte{}, 0644); err != nil {
+		return fmt.Errorf("failed to clear index: %v", err)
+	}
+
+	fmt.Printf("Commited as %s\n", commitHash)
 	return nil
 }

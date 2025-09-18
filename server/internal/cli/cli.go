@@ -25,10 +25,6 @@ func (a *App) Run() error {
 				Name:  "init",
 				Usage: "Initialize a new Drift repository",
 				Action: func(c *cli.Context) error {
-					// start := time.Now()
-					// defer func() {
-					// 	fmt.Printf("Execution time: %s\n", time.Since(start))
-					// }()
 					ctx := &core.Context{}
 					if err := ctx.InitRepo(); err != nil {
 						return cli.Exit(err.Error(), 1)
@@ -47,10 +43,6 @@ func (a *App) Run() error {
 				Name:  "add",
 				Usage: "Add a file or folder to the Drift repository",
 				Action: func(c *cli.Context) error {
-					// start := time.Now()
-					// defer func() {
-					// 	fmt.Printf("Execution time: %s\n", time.Since(start))
-					// }()
 					path := c.Args().First()
 					if path == "" {
 						return cli.Exit("Please specify a file or folder to add", 1)
@@ -71,6 +63,21 @@ func (a *App) Run() error {
 						return err
 					}
 					return cli.Exit("Drift repository status displayed", 0)
+				},
+			},
+			{
+				Name:  "commit",
+				Usage: "Commit changes to the Drift repository",
+				Action: func(c *cli.Context) error {
+					msg := c.Args().First()
+					if msg == "" {
+						return cli.Exit("Aborting commit due to empty commit message", 1)
+					}
+					ctx := &core.Context{}
+					if err := ctx.Commit(msg); err != nil {
+						return err
+					}
+					return cli.Exit("Changes committed to Drift repository", 0)
 				},
 			},
 		},
