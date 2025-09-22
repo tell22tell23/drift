@@ -14,13 +14,21 @@ import (
 	// _libp2p "github.com/libp2p/go-libp2p"
 	crypto "github.com/libp2p/go-libp2p/core/crypto"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"gopkg.in/ini.v1"
 )
 
-func GenerateID() string {
-	return "sdkfjhsdkjfh"
+func GenerateID() (string, error) {
+	homeDir, _ := os.UserHomeDir()
+	globalCfgPath := filepath.Join(homeDir, ".drift", "config")
+	cfg, err := ini.Load(globalCfgPath)
+	if err != nil {
+		return "", fmt.Errorf("Error loading config file: %v", err)
+	}
+	peerID := cfg.Section("peer").Key("id").String()
+	return peerID, nil
 }
 
-func GeneratePrivPeerKey() (string, []byte, error) {
+func GeneratePeerKey() (string, []byte, error) {
 	priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
 	if err != nil {
 		return "", nil, fmt.Errorf("Error generating key pair: %v", err)

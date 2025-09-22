@@ -69,7 +69,12 @@ func (c *Context) InitRepo() error {
 	}
 
 	configPath := filepath.Join(repoPath, "config")
-	genID := utils.GenerateID() // use libp2p peer ID
+
+	id, err := utils.GenerateID() // use libp2p peer ID
+	if err != nil {
+		return fmt.Errorf("error generating peer ID: %v", err)
+	}
+
 	cfg, err := ini.LooseLoad(configPath)
 	if err != nil {
 		return err
@@ -78,7 +83,7 @@ func (c *Context) InitRepo() error {
 	cfg.Section("user").Key("name").SetValue("")
 	cfg.Section("user").Key("email").SetValue("")
 
-	cfg.Section("peer").Key("id").SetValue(genID)
+	cfg.Section("peer").Key("id").SetValue(id)
 	cfg.Section("peer").Key("address").SetValue("")
 	err = cfg.SaveTo(configPath)
 	if err != nil {
@@ -329,8 +334,9 @@ func (c *Context) Commit(msg string) error {
 func (c *Context) InitConfig() error {
 	homeDir, _ := os.UserHomeDir()
 	driftHome := filepath.Join(homeDir, ".drift")
+	os.MkdirAll(filepath.Join(driftHome, "keys"), 0755)
 
-	privID, privBytes, err := utils.GeneratePrivPeerKey()
+	privID, privBytes, err := utils.GeneratePeerKey()
 	if err != nil {
 		return fmt.Errorf("error generating peer ID: %v", err)
 	}
