@@ -83,21 +83,52 @@ func (a *App) Run() error {
 			{
 				Name:  "config",
 				Usage: "Get or set configuration options",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:    "global",
+						Usage:   "Use global configuration file",
+						Aliases: []string{"g"},
+					},
+				},
+				Subcommands: []*cli.Command{
+					{
+						Name:  "init",
+						Usage: "Initialize global configuration file",
+						Action: func(c *cli.Context) error {
+							if !c.Bool("global") {
+								return cli.Exit(
+									"The --global flag is required to initialize global configuration",
+									1,
+								)
+							}
+
+							ctx := &core.Context{}
+							if err := ctx.InitConfig(); err != nil {
+								return err
+							}
+
+							return nil
+						},
+					},
+				},
 				Action: func(c *cli.Context) error {
 					key := c.Args().Get(0)
 					value := c.Args().Get(1)
+					useGlobal := c.Bool("global")
+
 					ctx := &core.Context{}
 					if key == "" {
 						return cli.Exit("Please specify a configuration key", 1)
 					}
+
 					if value == "" {
-						val, err := ctx.GetConfig(key)
+						val, err := ctx.GetConfig(key, useGlobal)
 						if err != nil {
 							return err
 						}
 						return cli.Exit(key+" = "+val, 0)
 					} else {
-						if err := ctx.SetConfig(key, value); err != nil {
+						if err := ctx.SetConfig(key, value, useGlobal); err != nil {
 							return err
 						}
 						return cli.Exit("Set "+key+" to "+value, 0)

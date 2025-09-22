@@ -69,7 +69,7 @@ func (c *Context) InitRepo() error {
 	}
 
 	configPath := filepath.Join(repoPath, "config")
-	genID := utils.GenerateUUID() // use libp2p peer ID
+	genID := utils.GenerateID() // use libp2p peer ID
 	cfg, err := ini.LooseLoad(configPath)
 	if err != nil {
 		return err
@@ -326,16 +326,49 @@ func (c *Context) Commit(msg string) error {
 	return nil
 }
 
-func (c *Context) GetConfig(key string) (string, error) {
-	if err := utils.CheckInitialized(); err != nil {
-		return "", err
+func (c *Context) InitConfig() error {
+	homeDir, _ := os.UserHomeDir()
+	driftHome := filepath.Join(homeDir, ".drift")
+
+	privID, privBytes, err := utils.GeneratePrivPeerKey()
+	if err != nil {
+		return fmt.Errorf("error generating peer ID: %v", err)
 	}
 
-	if key != "email" && key != "name" {
-		return "", fmt.Errorf("unsupported config key: %s", key)
+	if err := os.WriteFile(filepath.Join(driftHome, "keys", "peer.key"), privBytes, 0600); err != nil {
+		return fmt.Errorf("error writing config file: %v", err)
 	}
 
-	configPath := filepath.Join(".drift", "config")
+	cfg := ini.Empty()
+	cfg.Section("user").Key("name").SetValue("")
+	cfg.Section("user").Key("email").SetValue("")
+	cfg.Section("peer").Key("id").SetValue(privID)
+	cfgPath := filepath.Join(driftHome, "config")
+	err = cfg.SaveTo(cfgPath)
+	if err != nil {
+		return fmt.Errorf("error saving config: %v", err)
+	}
+
+	return nil
+}
+
+func (c *Context) GetConfig(key string, useGlobal bool) (string, error) {
+	var configPath string
+	if useGlobal {
+		homeDir, _ := os.UserHomeDir()
+		configPath = filepath.Join(homeDir, ".drift", "config")
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			return "", fmt.Errorf(
+				"global config not initialized, run 'drift config --global init' to create one",
+			)
+		}
+	} else {
+		if err := utils.CheckInitialized(); err != nil {
+			return "", err
+		}
+		configPath = filepath.Join(".drift", "config")
+	}
+
 	cfg, err := ini.Load(configPath)
 	if err != nil {
 		return "", err
@@ -345,16 +378,19 @@ func (c *Context) GetConfig(key string) (string, error) {
 	return section.Key(key).String(), nil
 }
 
-func (c *Context) SetConfig(key, value string) error {
-	if err := utils.CheckInitialized(); err != nil {
-		return err
+func (c *Context) SetConfig(key, value string, useGlobal bool) error {
+	var configPath string
+	if useGlobal {
+		homeDir, _ := os.UserHomeDir()
+		configPath := filepath.Join(homeDir, ".drift", "config")
+		os.MkdirAll(filepath.Dir(configPath), 0755)
+	} else {
+		if err := utils.CheckInitialized(); err != nil {
+			return err
+		}
+		configPath = filepath.Join(".drift", "config")
 	}
 
-	if key != "email" && key != "name" {
-		return fmt.Errorf("unsupported config key: %s", key)
-	}
-
-	configPath := filepath.Join(".drift", "config")
 	cfg, err := ini.LooseLoad(configPath)
 	if err != nil {
 		return err

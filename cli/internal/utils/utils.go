@@ -11,11 +11,32 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/google/uuid"
+	// _libp2p "github.com/libp2p/go-libp2p"
+	crypto "github.com/libp2p/go-libp2p/core/crypto"
+	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
-func GenerateUUID() string {
-	return uuid.New().String()
+func GenerateID() string {
+	return "sdkfjhsdkjfh"
+}
+
+func GeneratePrivPeerKey() (string, []byte, error) {
+	priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
+	if err != nil {
+		return "", nil, fmt.Errorf("Error generating key pair: %v", err)
+	}
+
+	id, err := peer.IDFromPrivateKey(priv)
+	if err != nil {
+		return "", nil, fmt.Errorf("Error generating peer ID: %v", err)
+	}
+
+	privBytes, err := crypto.MarshalPrivateKey(priv)
+	if err != nil {
+		return "", nil, fmt.Errorf("Error marshalling private key: %v", err)
+	}
+
+	return id.String(), privBytes, nil
 }
 
 func IsRepo() bool {
